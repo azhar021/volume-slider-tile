@@ -3,14 +3,15 @@ import {
   Animated,
   NativeModules,
   PanResponder,
+  StatusBar,
   StyleSheet,
   Text,
   useAnimatedValue,
   View,
 } from 'react-native';
 
-const TRACK_WIDTH = 120;
-const TRACK_HEIGHT = 300;
+const TRACK_WIDTH = 88;
+const TRACK_HEIGHT = 280;
 
 const clamp = (n: number) => Math.min(1, Math.max(0, n));
 
@@ -36,7 +37,7 @@ function SpeakerIcon({ level, color }: { level: number; color: string }) {
                   left: -r,
                   top: 16 - r,
                   borderRightColor: color,
-                  opacity: i <= waves ? 1 : 0.2,
+                  opacity: i <= waves ? 1 : 0.18,
                 },
               ]}
             />
@@ -97,7 +98,7 @@ function createVolumeGesture(
       g.start = g.fraction;
       fill.stopAnimation();
       setDragFraction(g.fraction);
-      Animated.spring(scale, { toValue: 1.05, useNativeDriver: true, speed: 30, bounciness: 0 }).start();
+      Animated.spring(scale, { toValue: 1.04, useNativeDriver: true, speed: 30, bounciness: 0 }).start();
     },
     onPanResponderMove: (_, state) => {
       const f = clamp(g.start - state.dy / TRACK_HEIGHT);
@@ -157,7 +158,7 @@ function VolumePill({ value, max, onChange }: VolumePillProps) {
     >
       <Animated.View style={[styles.pillFill, { transform: [{ translateY }] }]} />
       <View style={styles.pillIcon} pointerEvents="none">
-        <SpeakerIcon level={displayFraction} color={displayFraction > 0.12 ? '#1f2937' : '#e2e8f0'} />
+        <SpeakerIcon level={displayFraction} color={displayFraction > 0.12 ? '#1c1917' : '#f5f5f4'} />
       </View>
     </Animated.View>
   );
@@ -174,12 +175,10 @@ const { VolumeTileModule } = NativeModules as {
 export default function App() {
   const [currentVolume, setCurrentVolume] = useState(8);
   const [maxVolume, setMaxVolume] = useState(15);
-  const [status, setStatus] = useState('Loading volume...');
 
   useEffect(() => {
     const loadVolume = async () => {
       if (!VolumeTileModule) {
-        setStatus('Native Android module is not available for volume control.');
         return;
       }
 
@@ -187,9 +186,8 @@ export default function App() {
         const result = await VolumeTileModule.getVolumeStatus();
         setCurrentVolume(result.current ?? 0);
         setMaxVolume(result.max ?? 15);
-        setStatus(result.summary ?? 'Volume status ready');
       } catch {
-        setStatus('Unable to read volume state.');
+        // Keep defaults when native module is unavailable.
       }
     };
 
@@ -208,41 +206,26 @@ export default function App() {
 
     try {
       await VolumeTileModule.setVolume(nextValue);
-      const percent = maxVolume > 0 ? Math.round((nextValue / maxVolume) * 100) : 0;
-      setStatus(`Volume set to ${percent}%`);
     } catch {
-      setStatus('Could not update volume from the app.');
+      // Ignore write failures; UI still reflects the drag.
     }
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.glow} />
+      <StatusBar barStyle="light-content" />
+      <View style={styles.orbTop} />
+      <View style={styles.orbBottom} />
 
-      <View style={styles.panel}>
-        <Text style={styles.kicker}>Audio control</Text>
-        <Text style={styles.title}>Volume Slider Tile</Text>
-        <Text style={styles.subtitle}>One tile opens a popup slider</Text>
+      <Text style={styles.brand}>Volume</Text>
+      <Text style={styles.percent}>{volumePercent}%</Text>
+      <Text style={styles.hint}>Drag to adjust media volume</Text>
 
-        <View style={styles.valueRow}>
-          <Text style={styles.value}>{volumePercent}</Text>
-          <Text style={styles.maxValue}>%</Text>
-        </View>
-
-        <View style={styles.pillWrap}>
-          <VolumePill value={currentVolume} max={maxVolume} onChange={handleVolumeChange} />
-        </View>
-
-        <View style={styles.statusBox}>
-          <Text style={styles.statusLabel}>Status</Text>
-          <Text style={styles.statusText}>{status}</Text>
-        </View>
-
-        <Text style={styles.helperText}>
-          Use the custom Quick Settings tile to open a popup with the same slider control. The tile is a
-          single action that opens the volume dialog directly from Android.
-        </Text>
+      <View style={styles.pillWrap}>
+        <VolumePill value={currentVolume} max={maxVolume} onChange={handleVolumeChange} />
       </View>
+
+      <Text style={styles.footer}>Quick Settings tile opens the same control</Text>
     </View>
   );
 }
@@ -250,122 +233,79 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050b14',
+    backgroundColor: '#0c0a09',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 28,
   },
-  glow: {
+  orbTop: {
     position: 'absolute',
-    top: -80,
-    width: 420,
-    height: 420,
-    borderRadius: 210,
-    backgroundColor: '#111827',
-    opacity: 0.95,
+    top: -120,
+    right: -80,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: '#1c1917',
   },
-  panel: {
-    width: '100%',
-    maxWidth: 460,
-    backgroundColor: 'rgba(15, 23, 42, 0.95)',
-    borderRadius: 28,
-    padding: 26,
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.18)',
-    shadowColor: '#020617',
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 12,
-    zIndex: 1,
+  orbBottom: {
+    position: 'absolute',
+    bottom: -140,
+    left: -100,
+    width: 360,
+    height: 360,
+    borderRadius: 180,
+    backgroundColor: '#292524',
+    opacity: 0.55,
   },
-  kicker: {
-    color: '#93c5fd',
-    fontSize: 12,
+  brand: {
+    color: '#a8a29e',
+    fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 1.2,
+    letterSpacing: 3.2,
     textTransform: 'uppercase',
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  title: {
-    color: '#f8fafc',
-    fontSize: 30,
+  percent: {
+    color: '#fafaf9',
+    fontSize: 64,
     fontWeight: '800',
-    letterSpacing: -0.8,
+    letterSpacing: -2.4,
     marginBottom: 6,
   },
-  subtitle: {
-    color: '#cbd5e1',
-    fontSize: 14,
+  hint: {
+    color: '#78716c',
+    fontSize: 15,
     fontWeight: '500',
-    marginBottom: 18,
-  },
-  valueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    marginBottom: 18,
-  },
-  value: {
-    color: '#f8fafc',
-    fontSize: 44,
-    fontWeight: '800',
-    letterSpacing: -1,
-  },
-  maxValue: {
-    color: '#94a3b8',
-    fontSize: 18,
-    fontWeight: '600',
+    marginBottom: 36,
   },
   pillWrap: {
     alignItems: 'center',
-    paddingVertical: 8,
   },
   pill: {
     width: TRACK_WIDTH,
     height: TRACK_HEIGHT,
-    borderRadius: 36,
-    backgroundColor: 'rgba(51, 65, 85, 0.65)',
+    borderRadius: 44,
+    backgroundColor: 'rgba(68, 64, 60, 0.55)',
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.15)',
   },
   pillFill: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#fafaf9',
   },
   pillIcon: {
     position: 'absolute',
-    bottom: 26,
+    bottom: 28,
     left: 0,
     right: 0,
     alignItems: 'center',
   },
-  statusBox: {
-    marginTop: 18,
-    backgroundColor: '#0f172a',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.2)',
-  },
-  statusLabel: {
-    color: '#bfdbfe',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-  },
-  statusText: {
-    color: '#f8fafc',
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  helperText: {
-    color: '#cbd5e1',
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 18,
+  footer: {
+    position: 'absolute',
+    bottom: 48,
+    color: '#57534e',
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 0.2,
   },
 });
 
