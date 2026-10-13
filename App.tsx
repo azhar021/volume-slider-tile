@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
   Animated,
+  AppState,
+  DeviceEventEmitter,
   NativeModules,
   PanResponder,
   StatusBar,
@@ -192,6 +194,24 @@ export default function App() {
     };
 
     loadVolume();
+
+    const volumeSub = DeviceEventEmitter.addListener(
+      'volumeChanged',
+      (event: { current: number; max: number }) => {
+        setCurrentVolume(event.current);
+        setMaxVolume(event.max);
+      },
+    );
+    const appStateSub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        loadVolume();
+      }
+    });
+
+    return () => {
+      volumeSub.remove();
+      appStateSub.remove();
+    };
   }, []);
 
   const volumePercent = maxVolume > 0 ? Math.round((currentVolume / maxVolume) * 100) : 0;
