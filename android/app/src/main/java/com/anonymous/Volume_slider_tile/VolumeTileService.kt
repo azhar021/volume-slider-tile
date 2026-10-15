@@ -2,6 +2,7 @@ package com.anonymous.Volume_slider_tile
 
 import android.app.Dialog
 import android.app.PendingIntent
+import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -25,38 +26,10 @@ class VolumeTileService : TileService() {
         }
 
         try {
-            showDialog(buildInvisibleDialog())
+            showDialog(VolumeTriggerDialog(this))
         } catch (_: RuntimeException) {
             showVolumePanel()
         }
-    }
-
-    // Tile dialogs collapse the shade without the tile-to-activity launch animation.
-    private fun buildInvisibleDialog(): Dialog {
-        val dialog = Dialog(this, android.R.style.Theme_Translucent_NoTitleBar)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        dialog.setContentView(View(this))
-        dialog.window?.apply {
-            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-            clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-            addFlags(
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            )
-            setWindowAnimations(0)
-            setLayout(1, 1)
-        }
-        dialog.setOnShowListener {
-            handler.postDelayed({
-                showVolumePanel()
-                handler.postDelayed({
-                    if (dialog.isShowing) {
-                        dialog.dismiss()
-                    }
-                }, DISMISS_DELAY_MS)
-            }, SHADE_SETTLE_DELAY_MS)
-        }
-        return dialog
     }
 
     private fun showVolumePanel() {
@@ -65,6 +38,59 @@ class VolumeTileService : TileService() {
             AudioManager.ADJUST_SAME,
             AudioManager.FLAG_SHOW_UI,
         )
+    }
+
+    /**
+     * Invisible 1x1 dialog. Tile dialogs collapse the shade without the tile-to-activity
+     * launch animation, and the dialog only gains window focus once the shade is gone —
+     * SystemUI drops volume UI requests made while the shade is still visible.
+     */
+    private inner class VolumeTriggerDialog(context: Context) :
+        Dialog(context, android.R.style.Theme_Translucent_NoTitleBar) {
+
+        private var shownCount = 0
+
+        init {
+            requestWindowFeature(Window.FEATURE_NO_TITLE)
+            setContentView(View(context))
+            window?.apply {
+                setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+                clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                addFlags(
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                )
+                setWindowAnimations(0)
+                setLayout(1, 1)
+            }
+            setOnShowListener {
+                handler.postDelayed({ trigger() }, FALLBACK_DELAY_MS)
+            }
+        }
+
+        override fun onWindowFocusChanged(hasFocus: Boolean) {
+            super.onWindowFocusChanged(hasFocus)
+            if (hasFocus && shownCount == 0) {
+                handler.postDelayed({ trigger() }, FOCUS_SETTLE_DELAY_MS)
+            }
+        }
+
+        private fun trigger() {
+            if (shownCount > 0 || !isShowing) {
+                return
+            }
+            shownCount = 1
+            showVolumePanel()
+
+            // Second request covers the case where the first one landed during the
+            // tail of the shade animation and was dropped.
+            handler.postDelayed({
+                if (isShowing) {
+                    showVolumePanel()
+                }
+                handler.postDelayed({ if (isShowing) dismiss() }, DISMISS_DELAY_MS)
+            }, RETRY_DELAY_MS)
+        }
     }
 
     private fun launchTrampolineActivity() {
@@ -92,7 +118,9 @@ class VolumeTileService : TileService() {
     }
 
     private companion object {
-        const val SHADE_SETTLE_DELAY_MS = 250L
-        const val DISMISS_DELAY_MS = 200L
+        const val FOCUS_SETTLE_DELAY_MS = 80L
+        const val FALLBACK_DELAY_MS = 700L
+        const val RETRY_DELAY_MS = 350L
+        const val DISMISS_DELAY_MS = 150L
     }
 }
